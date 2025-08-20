@@ -1,3 +1,4 @@
+"use client";
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -67,7 +68,7 @@ export function AuthForm() {
           <div className="flex justify-center">
             <div className="flex items-center space-x-2">
               <Package className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold text-gray-900">Inventory Pro</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Platform</h1>
             </div>
           </div>
           <p className="mt-2 text-sm text-gray-600">

@@ -54,7 +54,7 @@ export function PurchaseManagement() {
 
   const fetchPurchases = async () => {
     try {
-      const response = await fetch('/api/purchases', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchases`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -100,7 +100,7 @@ export function PurchaseManagement() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products/search', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,7 +129,7 @@ export function PurchaseManagement() {
     e.preventDefault();
 
     try {
-      const response = await fetch('/api/purchases', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchases`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

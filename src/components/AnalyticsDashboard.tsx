@@ -1,3 +1,4 @@
+"use client";
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -37,14 +38,14 @@ export function AnalyticsDashboard() {
       setLoading(true);
 
       // Fetch sales data
-      const salesResponse = await fetch('/api/sales', {
+      const salesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sales`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
 
       // Fetch purchases data
-      const purchasesResponse = await fetch('/api/purchases', {
+      const purchasesResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/purchases`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

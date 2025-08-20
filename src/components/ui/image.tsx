@@ -22,6 +22,6 @@ export function Image(props: React.ImgHTMLAttributes<HTMLImageElement>) {
       </div>
     </div>
   ) : (
-    <img src={src} alt={alt} className={className} style={style} {...rest} onError={handleError} />
+    <img src={src || undefined} alt={alt} className={className} style={style} {...rest} onError={handleError} />
   )
 }

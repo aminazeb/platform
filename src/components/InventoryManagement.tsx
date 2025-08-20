@@ -17,7 +17,6 @@ interface InventoryItem {
   image_url: string;
   price: number;
   quantity: number;
-  status: 'active' | 'archived';
   last_updated: string;
 }
 
@@ -28,7 +27,6 @@ export function InventoryManagement() {
 
   // Unified filters for both list and export
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [quantityFilter, setQuantityFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
 
@@ -39,7 +37,7 @@ export function InventoryManagement() {
   const fetchInventory = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/products/search', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,66 +48,7 @@ export function InventoryManagement() {
 
       if (response.ok) {
         const data = await response.json();
-        setInventory(data);
-      } else {
-        // Mock data for demonstration - including archived items
-        setInventory([
-          {
-            id: '1',
-            name: 'Blue Pen',
-            description: 'High-quality blue ballpoint pen',
-            color: 'blue',
-            image_url: 'https://images.unsplash.com/photo-1586952518485-11b180e92764?w=300',
-            price: 2.50,
-            quantity: 150,
-            status: 'active',
-            last_updated: '2025-01-15'
-          },
-          {
-            id: '2',
-            name: 'Red Marker',
-            description: 'Permanent red marker for presentations',
-            color: 'red',
-            image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=300',
-            price: 3.75,
-            quantity: 5, // Low stock
-            status: 'active',
-            last_updated: '2025-01-14'
-          },
-          {
-            id: '3',
-            name: 'Green Notebook',
-            description: 'A5 lined notebook with green cover',
-            color: 'green',
-            image_url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300',
-            price: 8.99,
-            quantity: 80,
-            status: 'active',
-            last_updated: '2025-01-13'
-          },
-          {
-            id: '4',
-            name: 'Black Stapler',
-            description: 'Heavy-duty office stapler',
-            color: 'black',
-            image_url: 'https://images.unsplash.com/photo-1606103514929-8b8e5ab8d26e?w=300',
-            price: 15.99,
-            quantity: 0, // Out of stock
-            status: 'active',
-            last_updated: '2025-01-12'
-          },
-          {
-            id: '5',
-            name: 'Old Calculator',
-            description: 'Vintage calculator - discontinued',
-            color: 'gray',
-            image_url: 'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=300',
-            price: 25.99,
-            quantity: 3,
-            status: 'archived',
-            last_updated: '2025-01-10'
-          }
-        ]);
+        setInventory(data.data);
       }
     } catch (error) {
       console.error('Error fetching inventory:', error);
@@ -126,12 +65,11 @@ export function InventoryManagement() {
       // Use the current filters for export
       const exportFilters = {
         search: searchTerm,
-        status: statusFilter,
         quantityFilter: quantityFilter,
         priceFilter: priceFilter
       };
 
-      const response = await fetch('/api/inventory/export', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory/export`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -163,7 +101,6 @@ export function InventoryManagement() {
             item.color,
             item.price.toString(),
             item.quantity.toString(),
-            item.status,
             item.last_updated
           ])
         ].map(row => row.join(',')).join('\n');
@@ -195,9 +132,6 @@ export function InventoryManagement() {
         item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.color.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // Status filter
-      const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-
       // Quantity filter
       const matchesQuantity = quantityFilter === 'all' ||
         (quantityFilter === 'low' && item.quantity <= 10 && item.quantity > 0) ||
@@ -210,7 +144,7 @@ export function InventoryManagement() {
         (priceFilter === '5-20' && item.price >= 5 && item.price <= 20) ||
         (priceFilter === 'over-20' && item.price > 20);
 
-      return matchesSearch && matchesStatus && matchesQuantity && matchesPrice;
+      return matchesSearch && matchesQuantity && matchesPrice;
     });
   };
 
@@ -225,7 +159,6 @@ export function InventoryManagement() {
   const totalValue = filteredInventory.reduce((sum, item) => sum + (item.quantity * item.price), 0);
   const lowStockCount = filteredInventory.filter(item => item.quantity <= 10 && item.quantity > 0).length;
   const outOfStockCount = filteredInventory.filter(item => item.quantity === 0).length;
-  const activeCount = filteredInventory.filter(item => item.status === 'active').length;
 
   if (loading) {
     return (
@@ -239,18 +172,7 @@ export function InventoryManagement() {
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{filteredInventory.length}</div>
-            <p className="text-xs text-muted-foreground">{activeCount} active</p>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Value</CardTitle>
@@ -308,18 +230,6 @@ export function InventoryManagement() {
               />
             </div>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
-
             <Select value={quantityFilter} onValueChange={setQuantityFilter}>
               <SelectTrigger>
                 <SelectValue />
@@ -356,7 +266,6 @@ export function InventoryManagement() {
                   <TableHead>Price</TableHead>
                   <TableHead>Quantity</TableHead>
                   <TableHead>Total Value</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead>Stock Status</TableHead>
                   <TableHead>Last Updated</TableHead>
                 </TableRow>
@@ -384,14 +293,9 @@ export function InventoryManagement() {
                           {item.color}
                         </Badge>
                       </TableCell>
-                      <TableCell>${item.price.toFixed(2)}</TableCell>
+                      <TableCell>${item.price}</TableCell>
                       <TableCell>{item.quantity} units</TableCell>
-                      <TableCell>${(item.quantity * item.price).toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Badge variant={item.status === 'active' ? 'secondary' : 'destructive'}>
-                          {item.status}
-                        </Badge>
-                      </TableCell>
+                      <TableCell>${(item.quantity * item.price)}</TableCell>
                       <TableCell>
                         <Badge variant={stockStatus.variant}>{stockStatus.label}</Badge>
                       </TableCell>

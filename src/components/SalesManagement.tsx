@@ -78,7 +78,7 @@ export function SalesManagement() {
 
   const fetchSales = async () => {
     try {
-      const response = await fetch('/api/sales', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sales`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -124,7 +124,7 @@ export function SalesManagement() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products/search', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -244,7 +244,7 @@ export function SalesManagement() {
           customer_email: customerEmail
         };
 
-        const response = await fetch('/api/sales', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sales`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

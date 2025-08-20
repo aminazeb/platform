@@ -20,8 +20,8 @@ interface Product {
   color: string;
   image_url: string;
   price: number;
-  quantity?: number;
   status: 'active' | 'archived';
+  meta: any;
 }
 
 export function ProductManagement() {
@@ -39,7 +39,11 @@ export function ProductManagement() {
     description: '',
     color: '',
     image_url: '',
-    price: 0
+    price: 0,
+    meta: {
+      quantity: 0,
+      storage_location: ''
+    }
   });
 
   useEffect(() => {
@@ -54,7 +58,11 @@ export function ProductManagement() {
         description: '',
         color: '',
         image_url: '',
-        price: 0
+        price: 0,
+        meta: {
+          quantity: 0,
+          storage_location: ''
+        }
       });
       setEditingProduct(null);
     }
@@ -63,7 +71,7 @@ export function ProductManagement() {
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/products/search', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -74,51 +82,7 @@ export function ProductManagement() {
 
       if (response.ok) {
         const data = await response.json();
-        setProducts(data);
-      } else {
-        // Mock data for demonstration - including archived products
-        setProducts([
-          {
-            id: '1',
-            name: 'Blue Pen',
-            description: 'High-quality blue ballpoint pen',
-            color: 'blue',
-            image_url: 'https://images.unsplash.com/photo-1586952518485-11b180e92764?w=300',
-            price: 2.50,
-            quantity: 150,
-            status: 'active'
-          },
-          {
-            id: '2',
-            name: 'Red Marker',
-            description: 'Permanent red marker for presentations',
-            color: 'red',
-            image_url: 'https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?w=300',
-            price: 3.75,
-            quantity: 45,
-            status: 'active'
-          },
-          {
-            id: '3',
-            name: 'Green Notebook',
-            description: 'A5 lined notebook with green cover',
-            color: 'green',
-            image_url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300',
-            price: 8.99,
-            quantity: 80,
-            status: 'active'
-          },
-          {
-            id: '4',
-            name: 'Old Calculator',
-            description: 'Vintage calculator - discontinued',
-            color: 'gray',
-            image_url: 'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=300',
-            price: 25.99,
-            quantity: 3,
-            status: 'archived'
-          }
-        ]);
+        setProducts(data.data);
       }
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -132,7 +96,7 @@ export function ProductManagement() {
     e.preventDefault();
 
     try {
-      const response = await fetch('/api/products', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -145,17 +109,6 @@ export function ProductManagement() {
         toast.success('Product added successfully');
         setIsAddModalOpen(false);
         fetchProducts();
-      } else {
-        // Mock success for demonstration
-        const newProduct: Product = {
-          id: Date.now().toString(),
-          ...formData,
-          quantity: 0,
-          status: 'active'
-        };
-        setProducts(prev => [newProduct, ...prev]);
-        toast.success('Product added successfully');
-        setIsAddModalOpen(false);
       }
     } catch (error) {
       console.error('Error adding product:', error);
@@ -169,7 +122,7 @@ export function ProductManagement() {
     if (!editingProduct) return;
 
     try {
-      const response = await fetch(`/api/products/${editingProduct.id}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/${editingProduct.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -193,40 +146,6 @@ export function ProductManagement() {
     }
   };
 
-  const handleArchiveProduct = (productId: string) => {
-    try {
-      setProducts(prev => prev.map(product =>
-        product.id === productId
-          ? { ...product, status: 'archived' as const }
-          : product
-      ));
-
-      const productName = products.find(p => p.id === productId)?.name;
-      toast.success(`${productName} has been archived`);
-      setOpenPopover(null);
-    } catch (error) {
-      console.error('Error archiving product:', error);
-      toast.error('Failed to archive product');
-    }
-  };
-
-  const handleUnarchiveProduct = (productId: string) => {
-    try {
-      setProducts(prev => prev.map(product =>
-        product.id === productId
-          ? { ...product, status: 'active' as const }
-          : product
-      ));
-
-      const productName = products.find(p => p.id === productId)?.name;
-      toast.success(`${productName} has been reactivated`);
-      setOpenPopover(null);
-    } catch (error) {
-      console.error('Error unarchiving product:', error);
-      toast.error('Failed to reactivate product');
-    }
-  };
-
   const handleEditClick = (product: Product) => {
     setEditingProduct(product);
     setFormData({
@@ -234,23 +153,68 @@ export function ProductManagement() {
       description: product.description,
       color: product.color,
       image_url: product.image_url,
-      price: product.price
+      price: product.price,
+      meta: {
+        quantity: product.meta?.quantity || 0,
+        storage_location: product.meta?.storage_location || ''
+      }
     });
     setIsEditModalOpen(true);
     setOpenPopover(null);
   };
 
-  const handleDeleteProduct = (productId: string) => {
-    if (window.confirm('Are you sure you want to permanently delete this product?')) {
-      try {
-        setProducts(prev => prev.filter(product => product.id !== productId));
+  const handleArchiveProduct = async (productId: string) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/${productId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (response.ok) {
+        setProducts(prev => prev.map(product =>
+          product.id === productId
+            ? { ...product, status: 'archived' as const }
+            : product
+        ));
         const productName = products.find(p => p.id === productId)?.name;
-        toast.success(`${productName} has been deleted permanently`);
+        toast.success(`${productName} has been archived`);
         setOpenPopover(null);
-      } catch (error) {
-        console.error('Error deleting product:', error);
-        toast.error('Failed to delete product');
+      } else {
+        throw new Error('Failed to archive product');
       }
+    } catch (error) {
+      console.error('Error archiving product:', error);
+      toast.error('Failed to archive product');
+    }
+  };
+
+  const handleUnarchiveProduct = async (productId: string) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/${productId}/restore`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: null
+      });
+      if (response.ok) {
+        setProducts(prev => prev.map(product =>
+          product.id === productId
+            ? { ...product, status: 'active' as const }
+            : product
+        ));
+        const productName = products.find(p => p.id === productId)?.name;
+        toast.success(`${productName} has been reactivated`);
+        setOpenPopover(null);
+      } else {
+        throw new Error('Failed to reactivate product');
+      }
+    } catch (error) {
+      console.error('Error unarchiving product:', error);
+      toast.error('Failed to reactivate product');
     }
   };
 
@@ -354,7 +318,6 @@ export function ProductManagement() {
                   <TableHead>Product</TableHead>
                   <TableHead>Color</TableHead>
                   <TableHead>Price</TableHead>
-                  <TableHead>Quantity</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[70px]">Actions</TableHead>
                 </TableRow>
@@ -380,8 +343,7 @@ export function ProductManagement() {
                         {product.color}
                       </Badge>
                     </TableCell>
-                    <TableCell>${product.price.toFixed(2)}</TableCell>
-                    <TableCell>{product.quantity || 0} units</TableCell>
+                    <TableCell>${product.price}</TableCell>
                     <TableCell>
                       <Badge variant={product.status === 'active' ? 'secondary' : 'destructive'}>
                         {product.status}
@@ -434,16 +396,6 @@ export function ProductManagement() {
                                 Unarchive Product
                               </Button>
                             )}
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="justify-start px-3 py-2 h-auto rounded-none text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteProduct(product.id)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Permanently
-                            </Button>
                           </div>
                         </PopoverContent>
                       </Popover>
@@ -514,6 +466,30 @@ export function ProductManagement() {
                 step="0.01"
                 value={formData.price}
                 onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add-quantity">Quantity</Label>
+              <Input
+                id="add-quantity"
+                type="number"
+                min="0"
+                step="1"
+                value={formData.meta.quantity}
+                onChange={(e) => setFormData(prev => ({ ...prev, meta: { ...prev.meta, quantity: parseInt(e.target.value) || 0 } }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add-storage-location">Storage Location</Label>
+              <Input
+                id="add-storage-location"
+                value={formData.meta.storage_location}
+                onChange={(e) => setFormData(prev => ({ ...prev, meta: { ...prev.meta, storage_location: e.target.value } }))}
+                placeholder="e.g. Aisle 3, Warehouse A"
                 required
               />
             </div>
