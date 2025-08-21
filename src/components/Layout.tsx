@@ -1,12 +1,13 @@
 "use client";
 
-import { Outlet, Link, useLocation, useNavigate } from './Router';
 import { useAuth } from './AuthContext';
 import { Breadcrumbs } from './Breadcrumbs';
 import { Button } from './ui/button';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './ui/dropdown-menu';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import {
     BarChart3,
     Package,
@@ -18,53 +19,53 @@ import {
     Package2
 } from 'lucide-react';
 
-export function Layout() {
+export function Layout({ children }: { children: React.ReactNode }) {
     const { user, logout } = useAuth();
-    const location = useLocation();
-    const navigate = useNavigate();
+    const pathname = usePathname();
+    const router = useRouter();
 
-    const handleLogout = () => {
-        logout();
-        navigate('/');
+    const handleLogout = async () => {
+        await logout();
+        router.push('/login');
     };
 
     const navigationItems = [
         {
             name: 'Dashboard',
-            href: '/',
+            href: '/dashboard',
             icon: BarChart3,
-            current: location.pathname === '/'
+            current: pathname === '/dashboard'
         },
         {
             name: 'Inventory',
             href: '/inventory',
             icon: Package,
-            current: location.pathname === '/inventory'
+            current: pathname === '/inventory'
         },
         {
             name: 'Products',
             href: '/products',
             icon: Package2,
-            current: location.pathname === '/products'
+            current: pathname === '/products'
         },
         {
             name: 'Purchases',
             href: '/purchases',
             icon: ShoppingCart,
-            current: location.pathname === '/purchases'
+            current: pathname === '/purchases'
         },
         {
             name: 'Sales',
             href: '/sales',
             icon: ShoppingBag,
-            current: location.pathname === '/sales'
+            current: pathname === '/sales'
         }
     ];
 
-    const activeTab = navigationItems.find(item => item.current)?.href || '/';
+    const activeTab = navigationItems.find(item => item.current)?.href || '/dashboard';
 
     const handleTabChange = (value: string) => {
-        navigate(value);
+        router.push(value);
     };
 
     return (
@@ -73,7 +74,7 @@ export function Layout() {
             <aside className="w-80 bg-card border-r border-border flex flex-col">
                 {/* Sidebar Header */}
                 <div className="p-6 border-b border-border">
-                    <Link to="/" className="flex items-center space-x-3">
+                    <Link href="/" className="flex items-center space-x-3">
                         <Package className="h-8 w-8 text-primary" />
                         <div>
                             <h1 className="text-xl font-bold">Inventory Pro</h1>
@@ -158,7 +159,7 @@ export function Layout() {
 
                 {/* Main Content */}
                 <main className="flex-1 p-6 overflow-auto">
-                    <Outlet />
+                    {children}
                 </main>
             </div>
         </div>

@@ -8,6 +8,9 @@ import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { Search, Download, Filter, Loader2, Package, BarChart3 } from 'lucide-react';
 import { Image } from './ui/image';
+import { useInventorySearch } from '../hooks/useApi';
+import { useAuth } from './AuthContext';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 interface InventoryItem {
   id: string;
@@ -21,48 +24,83 @@ interface InventoryItem {
 }
 
 export function InventoryManagement() {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
+
+  // Route-based state
+  const searchTerm = searchParams?.get('search') || '';
+  const quantityFilter = searchParams?.get('quantity') || 'all';
+  const priceFilter = searchParams?.get('price') || 'all';
+
   const [exporting, setExporting] = useState(false);
 
-  // Unified filters for both list and export
-  const [searchTerm, setSearchTerm] = useState('');
-  const [quantityFilter, setQuantityFilter] = useState('all');
-  const [priceFilter, setPriceFilter] = useState('all');
+  // React Query hook
+  const {
+    data: inventoryData,
+    isLoading: loading,
+    error,
+    refetch: refetchInventory
+  } = useInventorySearch(searchTerm);
 
-  useEffect(() => {
-    fetchInventory();
-  }, [searchTerm]);
+  const inventory: InventoryItem[] = inventoryData?.data || [];
 
-  const fetchInventory = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ search: searchTerm })
-      });
+  // Update URL when filters change
+  const updateFilters = (newSearchTerm: string, newQuantityFilter: string, newPriceFilter: string) => {
+    const params = new URLSearchParams();
+    if (newSearchTerm) params.set('search', newSearchTerm);
+    if (newQuantityFilter !== 'all') params.set('quantity', newQuantityFilter);
+    if (newPriceFilter !== 'all') params.set('price', newPriceFilter);
 
-      if (response.ok) {
-        const data = await response.json();
-        setInventory(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching inventory:', error);
-      toast.error('Failed to fetch inventory');
-    } finally {
-      setLoading(false);
-    }
+    const queryString = params.toString();
+    const newUrl = queryString ? `/inventory?${queryString}` : '/inventory';
+    router.push(newUrl);
+  };
+
+  // Handle search input change
+  const handleSearchChange = (value: string) => {
+    updateFilters(value, quantityFilter, priceFilter);
+  };
+
+  // Handle filter changes
+  const handleQuantityFilterChange = (value: string) => {
+    updateFilters(searchTerm, value, priceFilter);
+  };
+
+  const handlePriceFilterChange = (value: string) => {
+    updateFilters(searchTerm, quantityFilter, value);
+  };
+
+  // Client-side CSV generation function
+  const generateCSVExport = (data: InventoryItem[]) => {
+    const csvContent = [
+      ['Name', 'Description', 'Color', 'Price', 'Quantity', 'Last Updated'],
+      ...data.map(item => [
+        item.name,
+        item.description,
+        item.color,
+        item.price.toString(),
+        item.quantity.toString(),
+        item.last_updated
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleExport = async () => {
     try {
       setExporting(true);
 
-      // Use the current filters for export
+      // Use the current filters from URL for export
       const exportFilters = {
         search: searchTerm,
         quantityFilter: quantityFilter,
@@ -90,35 +128,17 @@ export function InventoryManagement() {
         URL.revokeObjectURL(url);
         toast.success('Inventory exported successfully');
       } else {
-        // Mock CSV generation for demonstration using current filters
+        // Fallback to client-side CSV generation using current filtered data
         const filteredData = getFilteredInventory();
-
-        const csvContent = [
-          ['Name', 'Description', 'Color', 'Price', 'Quantity', 'Status', 'Last Updated'],
-          ...filteredData.map(item => [
-            item.name,
-            item.description,
-            item.color,
-            item.price.toString(),
-            item.quantity.toString(),
-            item.last_updated
-          ])
-        ].map(row => row.join(',')).join('\n');
-
-        const blob = new Blob([csvContent], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast.success('Inventory exported successfully');
+        generateCSVExport(filteredData);
+        toast.success('Inventory exported successfully (client-side)');
       }
     } catch (error) {
       console.error('Error exporting inventory:', error);
-      toast.error('Failed to export inventory');
+      // Fallback to client-side export
+      const filteredData = getFilteredInventory();
+      generateCSVExport(filteredData);
+      toast.success('Inventory exported successfully (client-side)');
     } finally {
       setExporting(false);
     }
@@ -225,12 +245,12 @@ export function InventoryManagement() {
               <Input
                 placeholder="Search products..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-10"
               />
             </div>
 
-            <Select value={quantityFilter} onValueChange={setQuantityFilter}>
+            <Select value={quantityFilter} onValueChange={handleQuantityFilterChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -242,7 +262,7 @@ export function InventoryManagement() {
               </SelectContent>
             </Select>
 
-            <Select value={priceFilter} onValueChange={setPriceFilter}>
+            <Select value={priceFilter} onValueChange={handlePriceFilterChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

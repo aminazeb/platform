@@ -1,19 +1,16 @@
 "use client";
-import { useAuth } from '../components/AuthContext';
+import { AuthForm } from '../../components/AuthForm';
+import { useAuth } from '../../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-export default function RootPage() {
+export default function LoginPage() {
     const { user, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading) {
-            if (user) {
-                router.push('/dashboard');
-            } else {
-                router.push('/login');
-            }
+        if (user && !loading) {
+            router.push('/');
         }
     }, [user, loading, router]);
 
@@ -28,5 +25,15 @@ export default function RootPage() {
         );
     }
 
-    return null;
+    if (user) {
+        return null; // Will redirect to home
+    }
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+            <div className="w-full max-w-md">
+                <AuthForm />
+            </div>
+        </div>
+    );
 }

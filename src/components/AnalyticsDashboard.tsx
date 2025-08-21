@@ -78,16 +78,6 @@ export function AnalyticsDashboard() {
       setDashboardData(mockData);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      // Set mock data on error
-      setDashboardData({
-        totalProducts: 245,
-        totalSales: 15420,
-        totalPurchases: 8930,
-        profitMargin: 42.1,
-        lowStockItems: 12,
-        recentActivity: [],
-        salesData: []
-      });
     } finally {
       setLoading(false);
     }

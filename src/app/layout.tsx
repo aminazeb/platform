@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Theme } from "@radix-ui/themes";
 import "./globals.css";
+import { Providers } from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,7 +32,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body>
-        <Theme>{children}</Theme>
+        <Theme>
+          <Providers>
+            {children}
+          </Providers>
+        </Theme>
       </body>
     </html>
   );

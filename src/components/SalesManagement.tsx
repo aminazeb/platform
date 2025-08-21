@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,25 +9,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { Plus, Receipt, Download, Loader2, ShoppingBag, Camera, X, Trash2, ShoppingCart } from 'lucide-react';
+import { useSales, useCreateSalesBatch, useInventorySearch } from '../hooks/useApi';
+import { useAuth } from './AuthContext';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+// Import QuaggaJS
+import Quagga from 'quagga';
 
 interface Sale {
   id: string;
   product_id: number;
-  product_name?: string;
+  product?: Product;
   quantity: number;
   action: string;
-  customer_email: string;
+  customer_email?: string;
   unit_price: number;
   total_amount: number;
-  date: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Product {
   id: number;
   name: string;
-  price: number;
-  quantity: number;
-  barcode?: string;
+  price: string; // API returns price as string
+  color?: string;
+  image_url?: string;
+  quantity: number; // Inventory has quantity field
+  last_updated?: string;
+  created_at?: string;
+  updated_at?: string;
+  meta?: {
+    barcode?: string;
+  };
 }
 
 interface CartItem {
@@ -40,7 +54,7 @@ interface CartItem {
 
 interface SalesReceipt {
   id: string;
-  customer_email: string;
+  customer_email?: string;
   items: Array<{
     name: string;
     quantity: number;
@@ -48,21 +62,31 @@ interface SalesReceipt {
     total: number;
   }>;
   subtotal: number;
-  tax: number;
+  tax?: number;
   total: number;
-  date: string;
+  created_at: string;
+  date?: string; // Add date for backward compatibility
 }
 
 export function SalesManagement() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const { user } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Route-based modal state
+  const isAddModalOpen = searchParams?.get('modal') === 'add-to-cart';
+  const isReceiptModalOpen = searchParams?.get('modal') === 'sales-receipt';
+  const showBarcodeScanner = searchParams?.get('modal') === 'barcode-scanner';
+
+  const { data: salesData, isLoading: salesLoading } = useSales();
+  const { data: productsData, isLoading: productsLoading } = useInventorySearch();
+  const createSalesBatchMutation = useCreateSalesBatch();
+
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [currentReceipt, setCurrentReceipt] = useState<SalesReceipt | null>(null);
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [customerEmail, setCustomerEmail] = useState('');
+  const [scannedBarcode, setScannedBarcode] = useState<string>('');
+  const scannerContainerRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     product_id: 0,
@@ -71,162 +95,143 @@ export function SalesManagement() {
     customer_email: ''
   });
 
+  // Extract data from React Query responses
+  const sales = salesData?.data || [];
+  const products = productsData?.data || [];
+  const loading = salesLoading || productsLoading;
+
   useEffect(() => {
-    fetchSales();
-    fetchProducts();
+    // No need to fetch sales and products here as they are now managed by React Query
   }, []);
 
-  const fetchSales = async () => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sales`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setSales(data);
-      } else {
-        // Mock data for demonstration
-        setSales([
-          {
-            id: '1',
-            product_id: 1,
-            product_name: 'Blue Pen',
-            quantity: 5,
-            action: 'sold',
-            customer_email: 'customer@example.com',
-            unit_price: 2.50,
-            total_amount: 12.50,
-            date: '2025-01-15'
-          },
-          {
-            id: '2',
-            product_id: 2,
-            product_name: 'Red Marker',
-            quantity: 3,
-            action: 'sold',
-            customer_email: 'john@example.com',
-            unit_price: 3.75,
-            total_amount: 11.25,
-            date: '2025-01-14'
-          }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error fetching sales:', error);
-      toast.error('Failed to fetch sales');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ search: '' })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data);
-      } else {
-        // Mock data with barcodes
-        setProducts([
-          { id: 1, name: 'Blue Pen', price: 2.50, quantity: 150, barcode: '1234567890' },
-          { id: 2, name: 'Red Marker', price: 3.75, quantity: 45, barcode: '2345678901' },
-          { id: 3, name: 'Green Notebook', price: 8.99, quantity: 80, barcode: '3456789012' }
-        ]);
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-    }
-  };
-
   const handleBarcodeScanner = () => {
-    setShowBarcodeScanner(true);
+    router.push('?modal=barcode-scanner');
+  };
 
-    // Simulate scanning a product
-    setTimeout(() => {
-      const mockBarcode = '1234567890';
-      const foundProduct = products.find(product => product.barcode === mockBarcode || product.id === 1);
+  const startScanner = () => {
+    if (!scannerContainerRef.current) return;
+
+    Quagga.init({
+      inputStream: {
+        name: "Live",
+        type: "LiveStream",
+        target: scannerContainerRef.current,
+        constraints: {
+          width: 640,
+          height: 480,
+          facingMode: "environment" // Use back camera
+        },
+      },
+      decoder: {
+        readers: [
+          "code_128_reader",
+          "ean_reader",
+          "ean_8_reader",
+          "code_39_reader",
+          "code_39_vin_reader",
+          "codabar_reader",
+          "upc_reader",
+          "upc_e_reader",
+          "i2of5_reader"
+        ]
+      }
+    }, (err: any) => {
+      if (err) {
+        console.error('Scanner initialization failed:', err);
+        toast.error('Failed to initialize barcode scanner');
+        return;
+      }
+
+      Quagga.start();
+      toast.success('Barcode scanner started');
+    });
+
+    Quagga.onDetected((result: any) => {
+      const code = result.codeResult.code;
+      setScannedBarcode(code);
+
+      // Find product by barcode
+      const foundProduct = products.find((product: Product) =>
+        product.meta?.barcode === code || product.id.toString() === code
+      );
 
       if (foundProduct) {
-        addToCart(foundProduct);
-        toast.success(`Added ${foundProduct.name} to cart`);
+        addToCart(foundProduct, 1);
+        toast.success(`Product found: ${foundProduct.name}`);
+        setScannedBarcode(''); // Clear scanned barcode after successful scan
+        Quagga.stop();
+        router.push('/sales'); // Close scanner after successful scan
       } else {
-        toast.error('Product not found for barcode: ' + mockBarcode);
+        toast.error(`No product found for barcode: ${code}`);
       }
+    });
 
-      setShowBarcodeScanner(false);
-    }, 2000);
-  };
-
-  const addToCart = (product: Product, quantity: number = 1) => {
-    if (quantity > product.quantity) {
-      toast.error(`Insufficient stock. Only ${product.quantity} units available.`);
-      return;
-    }
-
-    setCart(prev => {
-      const existingItem = prev.find(item => item.product_id === product.id);
-      if (existingItem) {
-        const newQuantity = existingItem.quantity + quantity;
-        if (newQuantity > product.quantity) {
-          toast.error(`Insufficient stock. Only ${product.quantity} units available.`);
-          return prev;
-        }
-        return prev.map(item =>
-          item.product_id === product.id
-            ? { ...item, quantity: newQuantity, total: newQuantity * item.price }
-            : item
-        );
-      } else {
-        return [...prev, {
-          product_id: product.id,
-          name: product.name,
-          price: product.price,
-          quantity,
-          total: product.price * quantity
-        }];
+    Quagga.onProcessed((result: any) => {
+      if (result) {
+        // Optional: Handle processed frames
       }
     });
   };
 
-  const removeFromCart = (productId: number) => {
-    setCart(prev => prev.filter(item => item.product_id !== productId));
+  const stopScanner = () => {
+    Quagga.stop();
+    setScannedBarcode('');
   };
 
-  const updateCartQuantity = (productId: number, newQuantity: number) => {
-    if (newQuantity <= 0) {
-      removeFromCart(productId);
-      return;
+  useEffect(() => {
+    if (showBarcodeScanner) {
+      // Start scanner after a short delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        startScanner();
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        stopScanner();
+      };
     }
+  }, [showBarcodeScanner]);
 
-    const product = products.find(p => p.id === productId);
-    if (!product) return;
+  const addToCart = (product: Product, quantity: number) => {
+    const existingItem = cart.find((item: CartItem) => item.product_id === product.id);
 
-    if (newQuantity > product.quantity) {
-      toast.error(`Insufficient stock. Only ${product.quantity} units available.`);
-      return;
+    if (existingItem) {
+      setCart(prev => prev.map((item: CartItem) =>
+        item.product_id === product.id
+          ? { ...item, quantity: item.quantity + quantity, total: (item.quantity + quantity) * item.price }
+          : item
+      ));
+    } else {
+      setCart(prev => [...prev, {
+        product_id: product.id,
+        name: product.name,
+        price: parseFloat(product.price),
+        quantity,
+        total: parseFloat(product.price) * quantity
+      }]);
     }
+  };
 
-    setCart(prev => prev.map(item =>
-      item.product_id === productId
-        ? { ...item, quantity: newQuantity, total: newQuantity * item.price }
-        : item
-    ));
+  const removeFromCart = (productId: number) => {
+    setCart(prev => prev.filter((item: CartItem) => item.product_id !== productId));
+  };
+
+  const updateCartItemQuantity = (productId: number, quantity: number) => {
+    setCart(prev => prev.map((item: CartItem) => {
+      if (item.product_id === productId) {
+        return { ...item, quantity, total: item.price * quantity };
+      }
+      return item;
+    }));
   };
 
   const clearCart = () => {
     setCart([]);
   };
+
+  const getTotalQuantity = () => cart.reduce((sum: number, item: CartItem) => sum + item.quantity, 0);
+
+  const getTotalAmount = () => cart.reduce((sum: number, item: CartItem) => sum + item.total, 0);
 
   const processCartSale = async () => {
     if (cart.length === 0) {
@@ -235,56 +240,25 @@ export function SalesManagement() {
     }
 
     try {
-      // Process each item in the cart
-      const salesPromises = cart.map(async (item) => {
-        const saleData = {
-          product_id: item.product_id,
-          quantity: item.quantity,
-          action: 'sold',
-          customer_email: customerEmail
-        };
-
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/sales`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(saleData)
-        });
-
-        return { response, item, saleData };
-      });
-
-      // Wait for all sales to process
-      const results = await Promise.all(salesPromises);
-
-      // Create new sales records
-      const newSales: Sale[] = results.map(({ item, saleData }, index) => ({
-        id: (Date.now() + index).toString(),
+      // Prepare sales data for batch creation with correct format
+      const salesData = cart.map(item => ({
         product_id: item.product_id,
-        product_name: item.name,
+        user_id: parseInt(user?.id || '0'),
         quantity: item.quantity,
-        action: 'sold',
-        customer_email: customerEmail,
-        unit_price: item.price,
-        total_amount: item.total,
-        date: new Date().toISOString().split('T')[0]
+        amount: item.total,
+        action: 'sale',
+        customer_email: customerEmail || 'walk-in',
+        meta: {
+          notes: `POS sale - Customer: ${customerEmail || 'Walk-in Customer'}`
+        }
       }));
 
-      setSales(prev => [...newSales, ...prev]);
-
-      // Update product quantities
-      setProducts(prev => prev.map(product => {
-        const cartItem = cart.find(item => item.product_id === product.id);
-        return cartItem
-          ? { ...product, quantity: product.quantity - cartItem.quantity }
-          : product;
-      }));
+      // Create sales via API call
+      await createSalesBatchMutation.mutateAsync(salesData);
 
       // Generate receipt
       const subtotal = cart.reduce((sum, item) => sum + item.total, 0);
-      const tax = subtotal * 0.08; // 8% tax
+      const tax = subtotal * 0.1; // 10% tax
       const total = subtotal + tax;
 
       const receipt: SalesReceipt = {
@@ -299,38 +273,19 @@ export function SalesManagement() {
         subtotal,
         tax,
         total,
-        date: new Date().toISOString().split('T')[0]
+        created_at: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString().split('T')[0] // For backward compatibility
       };
 
       setCurrentReceipt(receipt);
-      setIsReceiptModalOpen(true);
-      clearCart();
+      router.push('?modal=sales-receipt');
+      setCart([]);
       setCustomerEmail('');
-
-      toast.success(`Sale completed successfully! ${cart.length} items sold.`);
+      toast.success('Sale completed successfully!');
     } catch (error) {
-      console.error('Error processing cart sale:', error);
-      toast.error('Failed to process sale');
+      console.error('Error processing sale:', error);
+      toast.error('Failed to process sale. Please try again.');
     }
-  };
-
-  const handleAddSale = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const product = products.find(p => p.id === formData.product_id);
-    if (!product) {
-      toast.error('Please select a valid product');
-      return;
-    }
-
-    addToCart(product, formData.quantity);
-    setIsAddModalOpen(false);
-    setFormData({
-      product_id: 0,
-      quantity: 0,
-      action: 'sold',
-      customer_email: ''
-    });
   };
 
   const generateReceiptPDF = () => {
@@ -339,7 +294,7 @@ export function SalesManagement() {
     const receiptText = `
 SALES RECEIPT
 Receipt ID: ${currentReceipt.id}
-Date: ${new Date(currentReceipt.date).toLocaleDateString()}
+Date: ${new Date(currentReceipt.created_at).toLocaleDateString()}
 Customer: ${currentReceipt.customer_email || 'Walk-in Customer'}
 
 ITEMS:
@@ -348,7 +303,7 @@ ${currentReceipt.items.map(item =>
     ).join('\n')}
 
 Subtotal: $${currentReceipt.subtotal.toFixed(2)}
-Tax (8%): $${currentReceipt.tax.toFixed(2)}
+Tax: $${(currentReceipt.tax || 0).toFixed(2)}
 Total: $${currentReceipt.total.toFixed(2)}
 
 Thank you for your purchase!
@@ -363,8 +318,25 @@ Thank you for your purchase!
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
 
-    toast.success('Receipt downloaded successfully');
+  const handleAddSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const product = products.find((p: Product) => p.id === formData.product_id);
+    if (!product) {
+      toast.error('Please select a valid product');
+      return;
+    }
+
+    addToCart(product, formData.quantity);
+    router.push('/sales'); // Close modal after adding to cart
+    setFormData({
+      product_id: 0,
+      quantity: 0,
+      action: 'sold',
+      customer_email: ''
+    });
   };
 
   const cartSubtotal = cart.reduce((sum, item) => sum + item.total, 0);
@@ -393,14 +365,14 @@ Thank you for your purchase!
             </CardTitle>
             <div className="flex space-x-2">
               <Button
-                onClick={handleBarcodeScanner}
+                onClick={() => handleBarcodeScanner()}
                 disabled={showBarcodeScanner}
                 className="flex items-center space-x-2"
               >
                 <Camera className="h-4 w-4" />
                 <span>{showBarcodeScanner ? 'Scanning...' : 'Scan Barcode'}</span>
               </Button>
-              <Button onClick={() => setIsAddModalOpen(true)} variant="outline" className="flex items-center space-x-2">
+              <Button onClick={() => router.push('?modal=add-to-cart')} variant="outline" className="flex items-center space-x-2">
                 <Plus className="h-4 w-4" />
                 <span>Add Manually</span>
               </Button>
@@ -408,19 +380,37 @@ Thank you for your purchase!
           </CardHeader>
 
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {products.filter(p => p.quantity > 0).map((product) => (
-                <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardContent className="p-4" onClick={() => addToCart(product)}>
-                    <div className="text-center">
-                      <h3 className="font-medium">{product.name}</h3>
-                      <p className="text-sm text-muted-foreground">{product.quantity} in stock</p>
-                      <p className="text-lg font-bold text-primary">${product.price.toFixed(2)}</p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            {products.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {loading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span>Loading products...</span>
+                  </div>
+                ) : (
+                  <div>
+                    <p>No products available</p>
+                    <p className="text-sm">Please check your API connection or add some products first.</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {products.filter((p: Product) => p.quantity > 0).map((product: Product) => {
+                  return (
+                    <Card key={product.id} className="cursor-pointer hover:shadow-md transition-shadow">
+                      <CardContent className="p-4" onClick={() => addToCart(product, 1)}>
+                        <div className="text-center">
+                          <h3 className="font-medium">{product.name}</h3>
+                          <p className="text-lg font-bold text-primary">${parseFloat(product.price).toFixed(2)}</p>
+                          <p className="text-sm text-muted-foreground">Stock: {product.quantity}</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -461,7 +451,7 @@ Thank you for your purchase!
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateCartQuantity(item.product_id, item.quantity - 1)}
+                            onClick={() => updateCartItemQuantity(item.product_id, item.quantity - 1)}
                             className="h-6 w-6 p-0"
                           >
                             -
@@ -470,7 +460,7 @@ Thank you for your purchase!
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => updateCartQuantity(item.product_id, item.quantity + 1)}
+                            onClick={() => updateCartItemQuantity(item.product_id, item.quantity + 1)}
                             className="h-6 w-6 p-0"
                           >
                             +
@@ -545,17 +535,20 @@ Thank you for your purchase!
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sales.map((sale) => (
+                {sales.map((sale: Sale) => (
                   <TableRow key={sale.id}>
-                    <TableCell className="font-medium">{sale.product_name}</TableCell>
-                    <TableCell>{sale.quantity} units</TableCell>
-                    <TableCell>${sale.unit_price.toFixed(2)}</TableCell>
-                    <TableCell>${sale.total_amount.toFixed(2)}</TableCell>
-                    <TableCell>{sale.customer_email || 'Walk-in Customer'}</TableCell>
-                    <TableCell>{new Date(sale.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{sale.product_id}</TableCell>
+                    <TableCell>{sale.product?.name || 'Unknown Product'}</TableCell>
+                    <TableCell>{sale.quantity}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{sale.action}</Badge>
+                      <Badge variant={sale.action === 'sold' ? 'default' : 'secondary'}>
+                        {sale.action}
+                      </Badge>
                     </TableCell>
+                    <TableCell>{sale.customer_email || 'Walk-in'}</TableCell>
+                    <TableCell>${sale.unit_price}</TableCell>
+                    <TableCell>${sale.total_amount}</TableCell>
+                    <TableCell>{new Date(sale.created_at).toLocaleDateString()}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -571,7 +564,7 @@ Thank you for your purchase!
       </Card>
 
       {/* Add Sale Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog open={isAddModalOpen} onOpenChange={() => router.push('/sales')}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Product to Cart</DialogTitle>
@@ -588,13 +581,26 @@ Thank you for your purchase!
                   <SelectValue placeholder="Select a product" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products.filter(p => p.quantity > 0).map(product => (
-                    <SelectItem key={product.id} value={product.id.toString()}>
-                      {product.name} - ${product.price.toFixed(2)} ({product.quantity} in stock)
+                  {products.length === 0 ? (
+                    <SelectItem value="" disabled>
+                      No products available
                     </SelectItem>
-                  ))}
+                  ) : (
+                    products
+                      .filter((p: Product) => p.quantity > 0)
+                      .map((product: Product) => (
+                        <SelectItem key={product.id} value={product.id.toString()}>
+                          {product.name} - ${parseFloat(product.price).toFixed(2)} ({product.color}) - Stock: {product.quantity}
+                        </SelectItem>
+                      ))
+                  )}
                 </SelectContent>
               </Select>
+              {products.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {loading ? 'Loading products...' : 'No products found. Please check your API connection.'}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -610,7 +616,7 @@ Thank you for your purchase!
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => router.push('/sales')}>
                 Cancel
               </Button>
               <Button type="submit">
@@ -622,7 +628,7 @@ Thank you for your purchase!
       </Dialog>
 
       {/* Sales Receipt Modal */}
-      <Dialog open={isReceiptModalOpen} onOpenChange={setIsReceiptModalOpen}>
+      <Dialog open={isReceiptModalOpen} onOpenChange={() => router.push('/sales')}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
@@ -635,12 +641,11 @@ Thank you for your purchase!
             <div className="space-y-4">
               <div className="text-center border-b pb-4">
                 <h3 className="font-bold">SALES RECEIPT</h3>
-                <p className="text-sm text-muted-foreground">Receipt ID: {currentReceipt.id}</p>
-                <p className="text-sm text-muted-foreground">Date: {new Date(currentReceipt.date).toLocaleDateString()}</p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm"><strong>Customer:</strong> {currentReceipt.customer_email || 'Walk-in Customer'}</p>
+                <div className="text-sm text-muted-foreground">
+                  <p>Receipt ID: {currentReceipt.id}</p>
+                  <p>Date: {new Date(currentReceipt.created_at).toLocaleDateString()}</p>
+                  <p>Customer: {currentReceipt.customer_email || 'Walk-in Customer'}</p>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -659,8 +664,8 @@ Thank you for your purchase!
                   <span>${currentReceipt.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Tax (8%):</span>
-                  <span>${currentReceipt.tax.toFixed(2)}</span>
+                  <span>Tax:</span>
+                  <span>${(currentReceipt.tax || 0).toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold">
                   <span>Total:</span>
@@ -675,7 +680,7 @@ Thank you for your purchase!
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsReceiptModalOpen(false)}>
+            <Button variant="outline" onClick={() => router.push('/sales')}>
               Close
             </Button>
             <Button onClick={generateReceiptPDF} className="flex items-center space-x-2">
@@ -683,6 +688,52 @@ Thank you for your purchase!
               <span>Download Receipt</span>
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Barcode Scanner Modal */}
+      <Dialog open={showBarcodeScanner} onOpenChange={() => router.push('/sales')}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Camera className="h-5 w-5" />
+              <span>Barcode Scanner</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-4">
+                Point your camera at a barcode to scan
+              </p>
+              {scannedBarcode && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-sm font-medium text-green-800">
+                    Scanned: {scannedBarcode}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div
+              ref={scannerContainerRef}
+              className="w-full h-96 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center"
+            >
+              <div className="text-center text-gray-500">
+                <Camera className="h-16 w-16 mx-auto mb-2 opacity-50" />
+                <p>Camera initializing...</p>
+              </div>
+            </div>
+
+            <div className="flex justify-center space-x-2">
+              <Button variant="outline" onClick={stopScanner}>
+                Stop Scanner
+              </Button>
+              <Button onClick={() => router.push('/sales')}>
+                Close
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -7,11 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Toaster } from './ui/sonner';
 import { useAuth } from './AuthContext';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Lock, Mail, User, Package } from 'lucide-react';
 
 export function AuthForm() {
   const { login, register } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const [loginForm, setLoginForm] = useState({
@@ -33,6 +35,7 @@ export function AuthForm() {
     try {
       await login(loginForm.email, loginForm.password);
       toast.success('Logged in successfully');
+      router.push('/');
     } catch (error) {
       toast.error('Login failed. Please check your credentials.');
     } finally {
@@ -53,6 +56,7 @@ export function AuthForm() {
     try {
       await register(registerForm.email, registerForm.password, registerForm.name);
       toast.success('Account created successfully');
+      router.push('/');
     } catch (error) {
       toast.error('Registration failed. Please try again.');
     } finally {
