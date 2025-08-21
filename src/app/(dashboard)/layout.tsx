@@ -1,19 +1,20 @@
 "use client";
-import { useAuth } from '../components/AuthContext';
+import { Layout } from '../../components/Layout';
+import { useAuth } from '../../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-export default function RootPage() {
+export default function DashboardLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
     const { user, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        if (!loading) {
-            if (user) {
-                router.push('/dashboard');
-            } else {
-                router.push('/login');
-            }
+        if (!loading && !user) {
+            router.push('/login');
         }
     }, [user, loading, router]);
 
@@ -28,5 +29,13 @@ export default function RootPage() {
         );
     }
 
-    return null;
+    if (!user) {
+        return null; // Will redirect to login
+    }
+
+    return (
+        <Layout>
+            {children}
+        </Layout>
+    );
 }
